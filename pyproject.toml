@@ -1,0 +1,10 @@
+[project]
+name = "Sociomancer"
+version = "1.0.0"
+description = "Social Media Kit"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    'playwright',
+    'beautifulsoup4',
+]
