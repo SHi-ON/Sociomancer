@@ -29,7 +29,7 @@ def run(playwright: Playwright) -> None:
     page.get_by_role("button", name="Sign in", exact=True).click()
 
     print("Waiting for the page to load completely...")
-    time.sleep(2)
+    time.sleep(10)
 
     html_content = page.content()
     soup = BeautifulSoup(html_content, 'html.parser')
