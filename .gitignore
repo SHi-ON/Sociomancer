@@ -1,6 +1,9 @@
 processed_profiles.json
 credentials.sh
 
+# uv
+uv.lock
+
 # IDE
 .idea
 .vscode
