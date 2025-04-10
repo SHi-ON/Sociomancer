@@ -22,11 +22,6 @@ logging.basicConfig(
 LINKEDIN_EMAIL = os.getenv('LINKEDIN_EMAIL')
 LINKEDIN_PASSWORD = os.getenv('LINKEDIN_PASSWORD')
 
-# Location constraints from environment variables (used to find the location element)
-LOCATION_CONSTRAINT_1 = os.getenv('LOCATION_CONSTRAINT_1', 'NO_CONSTRAINT_1')
-LOCATION_CONSTRAINT_2 = os.getenv('LOCATION_CONSTRAINT_2', 'NO_CONSTRAINT_2')
-LOCATION_CONSTRAINT_3 = os.getenv('LOCATION_CONSTRAINT_3', 'NO_CONSTRAINT_3')
-
 # Path to the CSV file
 CSV_FILE = Path(__file__).parent / "Connections.csv"
 # Path to save progress
@@ -155,15 +150,6 @@ def extract_location(page, url):
         if element:
             location = element.inner_text().strip()
             logging.info(f"Found location: {location}")
-
-            # Check if location matches any of the constraints (for logging purposes)
-            location_lower = location.lower()
-            if (LOCATION_CONSTRAINT_1.lower() in location_lower or
-                    LOCATION_CONSTRAINT_2.lower() in location_lower or
-                    LOCATION_CONSTRAINT_3.lower() in location_lower):
-                logging.info(
-                    f"Location matches one of the constraints: {location}")
-
             return location
         else:
             logging.warning(f"Location element not found for {url}")
