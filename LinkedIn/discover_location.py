@@ -1,3 +1,70 @@
+"""
+LinkedIn Location Discovery Module
+=================================
+
+This module automates the process of extracting location information from LinkedIn profiles
+of your connections and updating a CSV file with this information.
+
+Overview:
+---------
+The script reads a CSV file containing LinkedIn connection data, visits each profile URL,
+extracts the location information, and updates the CSV file with a new 'Location' column.
+It processes connections from bottom to top of the CSV file and tracks progress to avoid
+reprocessing profiles if the script is interrupted and restarted.
+
+Prerequisites:
+-------------
+1. LinkedIn account credentials
+2. Playwright Python package installed
+3. A CSV file with LinkedIn connections (exported from LinkedIn)
+4. The CSV file must have a 'URL' column containing LinkedIn profile URLs
+
+Environment Setup:
+----------------
+Set the following environment variables before running the script:
+- LINKEDIN_EMAIL: Your LinkedIn account email
+- LINKEDIN_PASSWORD: Your LinkedIn account password
+
+CSV File Format:
+--------------
+The CSV file should have at least the following column:
+- URL: The LinkedIn profile URL of the connection
+
+The script will add a new column:
+- Location: The extracted location from the LinkedIn profile
+
+How to Run:
+----------
+1. Ensure the prerequisites are met and environment variables are set
+2. Place your LinkedIn connections CSV file in the same directory as this script
+   (named "Connections.csv")
+3. Run the script: python discover_location.py
+
+Process:
+-------
+1. The script logs into LinkedIn using the provided credentials
+2. It processes each connection from the bottom to the top of the CSV file
+3. For each connection, it:
+   a. Visits the LinkedIn profile URL
+   b. Extracts the location information
+   c. Updates the CSV file with the location
+   d. Saves progress to a JSON file
+4. Progress is tracked in "location_progress.json" to allow resuming if interrupted
+
+Output:
+------
+1. Updated CSV file with a new 'Location' column
+2. Log file "discover_location.log" with detailed execution information
+3. Progress file "location_progress.json" tracking which profiles have been processed
+
+Notes:
+-----
+- The script uses a browser automation approach, so a browser window will open during execution
+- Processing may take time depending on the number of connections
+- LinkedIn may have rate limits or detect automation, so use responsibly
+- The script includes error handling and will mark profiles with errors as "Error" or "Not found"
+"""
+
 import csv
 import json
 import logging
