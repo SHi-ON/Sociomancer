@@ -1,0 +1,280 @@
+import csv
+import json
+import logging
+import os
+import time
+from datetime import datetime
+from pathlib import Path
+
+from playwright.sync_api import Playwright, sync_playwright
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("discover_location.log"),
+        logging.StreamHandler()
+    ]
+)
+
+# LinkedIn credentials from environment variables
+LINKEDIN_EMAIL = os.getenv('LINKEDIN_EMAIL')
+LINKEDIN_PASSWORD = os.getenv('LINKEDIN_PASSWORD')
+
+# Location constraints from environment variables (used to find the location element)
+LOCATION_CONSTRAINT_1 = os.getenv('LOCATION_CONSTRAINT_1', 'NO_CONSTRAINT_1')
+LOCATION_CONSTRAINT_2 = os.getenv('LOCATION_CONSTRAINT_2', 'NO_CONSTRAINT_2')
+LOCATION_CONSTRAINT_3 = os.getenv('LOCATION_CONSTRAINT_3', 'NO_CONSTRAINT_3')
+
+# Path to the CSV file
+CSV_FILE = Path(__file__).parent / "Connections.csv"
+# Path to save progress
+PROGRESS_FILE = Path(__file__).parent / "location_progress.json"
+
+
+def count_csv_lines():
+    """Count the number of lines in the CSV file."""
+    try:
+        with open(CSV_FILE, 'r', encoding='utf-8') as f:
+            # Count lines but subtract 1 for the header
+            line_count = sum(1 for _ in f) - 1
+        logging.info(f"CSV file has {line_count} data lines")
+        return line_count
+    except Exception as e:
+        logging.error(f"Error counting CSV lines: {str(e)}")
+        return 0
+
+
+def get_csv_fieldnames():
+    """Get the field names from the CSV file."""
+    try:
+        with open(CSV_FILE, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+            if 'Location' not in fieldnames:
+                fieldnames.append('Location')
+            return fieldnames
+    except Exception as e:
+        logging.error(f"Error getting CSV fieldnames: {str(e)}")
+        return []
+
+
+def read_csv_line(line_number):
+    """Read a specific line from the CSV file."""
+    try:
+        with open(CSV_FILE, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            # Skip to the desired line
+            for i, row in enumerate(reader):
+                if i == line_number:
+                    return row
+        return None
+    except Exception as e:
+        logging.error(f"Error reading CSV line {line_number}: {str(e)}")
+        return None
+
+
+def update_csv_line(line_number, updated_row, fieldnames):
+    """Update a specific line in the CSV file."""
+    try:
+        # Read all lines from the file
+        with open(CSV_FILE, 'r', encoding='utf-8') as f:
+            lines = list(csv.reader(f))
+
+        # Convert the updated row to a list in the same order as fieldnames
+        row_list = [updated_row.get(field, '') for field in fieldnames]
+
+        # Update the specific line (add 1 to account for header)
+        lines[line_number + 1] = row_list
+
+        # Write all lines back to the file
+        with open(CSV_FILE, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(lines)
+
+        logging.info(f"Successfully updated line {line_number} in CSV")
+        return True
+    except Exception as e:
+        logging.error(f"Error updating CSV line {line_number}: {str(e)}")
+        return False
+
+
+def load_progress():
+    """Load progress from the progress file."""
+    if PROGRESS_FILE.exists():
+        try:
+            with open(PROGRESS_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error(f"Error loading progress: {str(e)}")
+    return {}
+
+
+def save_progress(progress):
+    """Save progress to the progress file."""
+    try:
+        with open(PROGRESS_FILE, 'w') as f:
+            json.dump(progress, f, indent=2)
+    except Exception as e:
+        logging.error(f"Error saving progress: {str(e)}")
+
+
+def initialize_browser(playwright):
+    """Initialize the browser and return the page object."""
+    browser = playwright.chromium.launch(headless=False)
+    context = browser.new_context()
+    page = context.new_page()
+    return browser, context, page
+
+
+def login_to_linkedin(page):
+    """Login to LinkedIn using the provided credentials."""
+    logging.info("Logging in to LinkedIn...")
+    page.goto("https://www.linkedin.com/login")
+    page.get_by_role("textbox", name="Email or phone").fill(LINKEDIN_EMAIL)
+    page.get_by_role("textbox", name="Password").fill(LINKEDIN_PASSWORD)
+    page.get_by_role("button", name="Sign in", exact=True).click()
+
+    # Wait for login to complete
+    logging.info("Waiting for login to complete...")
+    time.sleep(10)
+
+
+def extract_location(page, url):
+    """Extract location from a LinkedIn profile page."""
+    try:
+        # Visit the profile page
+        page.goto(url)
+        time.sleep(3)  # Wait for page to load
+
+        # Extract location using the selector
+        element = page.query_selector(
+            'span.text-body-small.inline.t-black--light.break-words')
+
+        if element:
+            location = element.inner_text().strip()
+            logging.info(f"Found location: {location}")
+
+            # Check if location matches any of the constraints (for logging purposes)
+            location_lower = location.lower()
+            if (LOCATION_CONSTRAINT_1.lower() in location_lower or
+                    LOCATION_CONSTRAINT_2.lower() in location_lower or
+                    LOCATION_CONSTRAINT_3.lower() in location_lower):
+                logging.info(
+                    f"Location matches one of the constraints: {location}")
+
+            return location
+        else:
+            logging.warning(f"Location element not found for {url}")
+            return "Not found"
+    except Exception as e:
+        logging.error(f"Error extracting location for {url}: {str(e)}")
+        return "Error"
+
+
+def process_connection(page, connection, line_number, progress, fieldnames):
+    """Process a single connection and update its location."""
+    url = connection.get('URL', '')
+    if not url:
+        logging.warning(f"No URL found for connection at line {line_number}")
+        return False
+
+    # Skip if already processed
+    if url in progress:
+        logging.info(f"Skipping already processed profile: {url}")
+        # Update the connection with the location from progress
+        if 'location' in progress[url]:
+            connection['Location'] = progress[url]['location']
+            # Update the CSV file
+            update_csv_line(line_number, connection, fieldnames)
+        return True
+
+    logging.info(f"Processing line {line_number}: {url}")
+
+    # Extract location
+    location = extract_location(page, url)
+
+    # Update the connection with the location
+    connection['Location'] = location
+
+    # Save progress
+    progress[url] = {
+        "timestamp": datetime.now().isoformat(),
+        "location": location
+    }
+    if location == "Error":
+        progress[url]["error"] = "Error extracting location"
+    save_progress(progress)
+
+    # Update the CSV file immediately
+    update_csv_line(line_number, connection, fieldnames)
+
+    return True
+
+
+def run(playwright: Playwright) -> None:
+    """Main function to run the location discovery process."""
+    # Load progress
+    progress = load_progress()
+
+    # Get CSV field names
+    fieldnames = get_csv_fieldnames()
+    if not fieldnames:
+        logging.error("Could not get CSV field names")
+        return
+
+    # Count lines in CSV
+    total_lines = count_csv_lines()
+    if total_lines <= 0:
+        logging.error("No data found in CSV file")
+        return
+
+    # Initialize browser
+    browser, context, page = initialize_browser(playwright)
+
+    # Login to LinkedIn
+    login_to_linkedin(page)
+
+    # Process connections from bottom to top
+    try:
+        for line_number in range(total_lines - 1, -1, -1):
+            # Read the specific line
+            connection = read_csv_line(line_number)
+            if not connection:
+                logging.warning(f"Could not read line {line_number}")
+                continue
+
+            # Process the connection
+            process_connection(page, connection, line_number, progress,
+                               fieldnames)
+
+            # Log progress
+            logging.info(
+                f"Processed line {line_number} ({total_lines - line_number}/{total_lines})")
+    except Exception as e:
+        logging.error(f"Error in main processing loop: {str(e)}")
+    finally:
+        # Close browser
+        context.close()
+        browser.close()
+        logging.info("Browser closed")
+
+
+def main():
+    """Entry point for the script."""
+    logging.info("Starting location discovery process")
+
+    if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
+        logging.error(
+            "LinkedIn credentials not found in environment variables")
+        print(
+            "Please set LINKEDIN_EMAIL and LINKEDIN_PASSWORD environment variables")
+        return
+
+    with sync_playwright() as playwright:
+        run(playwright)
+
+
+if __name__ == "__main__":
+    main()
