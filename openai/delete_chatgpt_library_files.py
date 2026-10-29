@@ -21,8 +21,11 @@ Setup (same login session the extension would use):
   The script exchanges the cookies for a short-lived access token on every
   run, so raw cookies never leave your machine. Alternatively, export
   CHATGPT_ACCESS_TOKEN directly with a token from /api/auth/session.
+  On a machine where Codex CLI is logged in, pass --codex-auth instead
+  to reuse that session with no extra setup.
 
 Examples:
+  python delete_chatgpt_library_files.py --list --codex-auth
   python delete_chatgpt_library_files.py --list
   python delete_chatgpt_library_files.py --list --name invoice
   python delete_chatgpt_library_files.py --delete libfile_abc123 --yes
@@ -89,6 +92,23 @@ def discover_access_token(env: Optional[Dict[str, str]] = None) -> Optional[str]
     """Return a pre-fetched ChatGPT access token when present."""
     env = os.environ if env is None else env
     return env.get("CHATGPT_ACCESS_TOKEN")
+
+
+def read_codex_access_token(path: Optional[str] = None) -> str:
+    """Read the access token from a local Codex login session."""
+    candidate = path or os.path.expanduser("~/.codex/auth.json")
+    try:
+        with open(candidate) as handle:
+            payload = json.load(handle)
+    except (OSError, ValueError) as error:
+        raise AuthError(
+            f"Could not read the Codex session at {candidate}: {error}"
+        ) from error
+    tokens = payload.get("tokens") if isinstance(payload, dict) else None
+    token = tokens.get("access_token") if isinstance(tokens, dict) else None
+    if not token or not isinstance(token, str):
+        raise AuthError(f"No access token in the Codex session at {candidate}.")
+    return token
 
 
 def _headers(access_token: Optional[str], cookies: Optional[str]) -> Dict[str, str]:
@@ -367,6 +387,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="ChatGPT access token (overrides CHATGPT_ACCESS_TOKEN).",
     )
+    parser.add_argument(
+        "--codex-auth",
+        action="store_true",
+        help="Use the Codex login session on this machine.",
+    )
     return parser
 
 
@@ -377,10 +402,13 @@ def resolve_credentials(
     token = args.access_token or discover_access_token()
     if token:
         return token, cookies
+    if args.codex_auth:
+        return read_codex_access_token(), None
     if not cookies:
         raise AuthError(
-            "No ChatGPT credentials. Set CHATGPT_COOKIES or "
-            "CHATGPT_ACCESS_TOKEN (see the module docstring)."
+            "No ChatGPT credentials. Pass --codex-auth, or set "
+            "CHATGPT_COOKIES or CHATGPT_ACCESS_TOKEN "
+            "(see the module docstring)."
         )
     token, _ = fetch_access_token(cookies)
     return token, cookies

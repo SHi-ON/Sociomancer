@@ -31,3 +31,10 @@ python openai/delete_chatgpt_library_files.py --list
 python openai/delete_chatgpt_library_files.py --all --dry-run
 python openai/delete_chatgpt_library_files.py --all --yes
 ```
+
+On a machine where Codex CLI is logged in, `--codex-auth` reuses that
+session instead of cookies:
+
+```sh
+python openai/delete_chatgpt_library_files.py --list --codex-auth
+```
