@@ -8,6 +8,7 @@ here as a standalone script:
   - session: GET    /api/auth/session (ChatGPT login cookies in, access token out)
   - list:    GET    /backend-api/files/library/nodes (cursor paged)
   - delete:  DELETE /backend-api/files/library/files/{id}?soft_delete=true
+  - trash:   DELETE /backend-api/files/library/trash
 
 Endpoint discovery credit:
 https://github.com/johnvouros/ChatGPT-bulk-delete-chats
@@ -50,10 +51,13 @@ from urllib.request import Request, urlopen
 BASE_URL = "https://chatgpt.com"
 SESSION_PATH = "/api/auth/session"
 NODES_PATH = "/backend-api/files/library/nodes"
+TRASH_PATH = "/backend-api/files/library/trash"
 DELETE_TIMEOUT = 30
 REQUEST_TIMEOUT = 45
+TRASH_TIMEOUT = 180
 PAGE_DELAY = 0.12
 DELETE_SPACING = 1.2
+TRASH_DELAY = 2
 
 
 class ChatGPTAPIError(Exception):
@@ -172,6 +176,14 @@ def _request(
         ) from error
     except URLError as error:
         raise ChatGPTAPIError(f"Request to {path} failed: {error}") from error
+    except TimeoutError as error:
+        raise ChatGPTAPIError(
+            f"ChatGPT {method} {path} timed out; its outcome is unknown."
+        ) from error
+    except json.JSONDecodeError as error:
+        raise ChatGPTAPIError(
+            f"ChatGPT {method} {path} returned an invalid response."
+        ) from error
 
 
 def fetch_access_token(cookies: str) -> Tuple[str, Optional[str]]:
@@ -327,6 +339,18 @@ def delete_library_file(
     return isinstance(payload, dict) and payload.get("success") is True
 
 
+def empty_file_trash(access_token: str, cookies: Optional[str]) -> Tuple[int, int]:
+    """Permanently delete all files in trash and return the result counts."""
+    payload = _request("DELETE", TRASH_PATH, access_token, cookies, TRASH_TIMEOUT)
+    if not isinstance(payload, dict):
+        raise ChatGPTAPIError("ChatGPT did not confirm the trash deletion.")
+    deleted = payload.get("deleted_count")
+    failed = payload.get("failed_count")
+    if any(type(count) is not int or count < 0 for count in (deleted, failed)):
+        raise ChatGPTAPIError("ChatGPT did not confirm the trash deletion counts.")
+    return deleted, failed
+
+
 def format_files(files: List[LibraryFile]) -> str:
     lines = ["library_file_id\tfile_name\tmime_type"]
     for item in files:
@@ -455,7 +479,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.dry_run:
             print("Dry run. Nothing was deleted.")
             return 0
-        if not args.yes and not confirm("Delete these files?"):
+        if not args.yes and not confirm(
+            "Delete these files and permanently empty the entire file trash?"
+        ):
             print("Aborted. Nothing was deleted.")
             return 0
 
@@ -478,6 +504,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                         target.library_file_id for target in targets[index:]
                     )
                     break
+            except AuthError:
+                raise
             except RateLimitError as error:
                 print(
                     f"paused: rate-limited at {item.library_file_id}; "
@@ -496,7 +524,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                 failed.append(item.library_file_id)
 
         print(f"Done. Deleted {deleted}, failed {len(failed)}.")
-        return 1 if failed else 0
+        if failed:
+            print("File trash was not emptied because the deletion batch failed.")
+            return 1
+        time.sleep(TRASH_DELAY)
+        trash_deleted, trash_failed = empty_file_trash(access_token, cookies)
+        print(f"File trash: deleted {trash_deleted}, failed {trash_failed}.")
+        return 1 if trash_failed else 0
     except ChatGPTAPIError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

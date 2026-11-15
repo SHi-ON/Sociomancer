@@ -15,8 +15,7 @@ python openai/delete_library_files.py --all --dry-run
 ```
 
 The ChatGPT consumer Library (chatgpt.com sidebar, Android app) has no
-public API. Delete those files by hand: open Library, select the file,
-then Delete. Deleting a chat does not delete its Library files.
+public API. Deleting a chat does not delete its Library files.
 
 `openai/delete_chatgpt_library_files.py` automates the same Library
 deletion through the backend endpoints used by the
@@ -38,3 +37,10 @@ session instead of cookies:
 ```sh
 python openai/delete_chatgpt_library_files.py --list --codex-auth
 ```
+
+After a successful deletion batch, the script waits briefly and empties the
+entire file trash. This permanently deletes all files already in trash as well
+as the files from the batch. It does not empty trash for listing, dry runs,
+empty selections, or failed deletion batches. `--yes` confirms both deletion
+and permanent trash removal. If the trash request times out, check the trash
+in ChatGPT before trying again because the request may still have succeeded.
