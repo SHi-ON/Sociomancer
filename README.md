@@ -38,6 +38,27 @@ session instead of cookies:
 python openai/delete_chatgpt_library_files.py --list --codex-auth
 ```
 
+`openai/transcribe_chatgpt_audio.py` transcribes an audio file through the
+same batch endpoint the ChatGPT web client uses
+(`POST /backend-api/transcribe`, multipart `file` + `language` fields,
+`{"text": ...}` back). It uses only the standard library.
+
+```sh
+python openai/transcribe_chatgpt_audio.py voice-memo.m4a --codex-auth
+python openai/transcribe_chatgpt_audio.py interview.mp3 --language en --json
+```
+
+The endpoint takes only `file` + `language`: any extra multipart field
+(such as a guiding `prompt`) makes the server return 500, and there is no
+speaker-label output, so diarization-style labels cannot be requested from
+it. Very long files are also rejected (a 31 min / 31 MB file fails fast);
+split those into ~5 minute chunks first and transcribe each chunk.
+
+The web client's live mic dictation instead streams PCM16 frames over
+`wss://chatgpt.com/backend-api/dictation/stream`
+(`session.start` / `audio.append` messages, `chatgpt-dictation` protocol);
+one-shot file transcription does not need it.
+
 After a successful deletion batch, the script waits briefly and empties the
 entire file trash. This permanently deletes all files already in trash as well
 as the files from the batch. It does not empty trash for listing, dry runs,
