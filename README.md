@@ -38,6 +38,16 @@ session instead of cookies:
 python openai/delete_chatgpt_library_files.py --list --codex-auth
 ```
 
+`openai/generate_image.py` generates an image through the official Images API
+(`POST /v1/images/generations` with a model and prompt). GPT image models
+return base64 image bytes, which the script decodes and writes to a file.
+It uses only the standard library.
+
+```sh
+export OPENAI_API_KEY="sk-..."
+python openai/generate_image.py "a red lighthouse at dusk" --out lighthouse.png
+```
+
 `openai/transcribe_chatgpt_audio.py` transcribes an audio file through the
 same batch endpoint the ChatGPT web client uses
 (`POST /backend-api/transcribe`, multipart `file` + `language` fields,
